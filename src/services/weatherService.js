@@ -21,15 +21,10 @@ async function requestJson(pathname, params, { signal } = {}) {
 
   if (!response.ok) {
     let message = 'No se pudo obtener la información del clima.'
-
     try {
       const errorPayload = await response.json()
-      if (errorPayload?.message) {
-        message = errorPayload.message
-      }
-    } catch {
-      // ignored
-    }
+      if (errorPayload?.message) message = errorPayload.message
+    } catch { /* noop */ }
 
     const error = new Error(message)
     error.status = response.status
@@ -41,7 +36,6 @@ async function requestJson(pathname, params, { signal } = {}) {
 
 function degreesToCardinal(degrees) {
   if (typeof degrees !== 'number' || Number.isNaN(degrees)) return null
-
   const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO']
   const index = Math.round(degrees / 22.5) % 16
   return directions[index]
@@ -49,10 +43,10 @@ function degreesToCardinal(degrees) {
 
 function getLocalDateKey(timestampSeconds, timezoneOffsetSeconds) {
   const date = new Date((timestampSeconds + timezoneOffsetSeconds) * 1000)
-  const year = date.getUTCFullYear()
-  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getUTCDate()}`.padStart(2, '0')
-  return `${year}-${month}-${day}`
+  const y = date.getUTCFullYear()
+  const m = `${date.getUTCMonth() + 1}`.padStart(2, '0')
+  const d = `${date.getUTCDate()}`.padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 function getLocalHour(timestampSeconds, timezoneOffsetSeconds) {
@@ -62,22 +56,12 @@ function getLocalHour(timestampSeconds, timezoneOffsetSeconds) {
 
 function selectRepresentativeEntry(entries, timezoneOffsetSeconds) {
   if (!entries || entries.length === 0) return null
-
   const targetHour = 12
   return entries.reduce((best, entry) => {
     if (!best) return entry
-
-    const bestHour = getLocalHour(best.dt, timezoneOffsetSeconds)
-    const entryHour = getLocalHour(entry.dt, timezoneOffsetSeconds)
-
-    const bestDiff = Math.abs(bestHour - targetHour)
-    const entryDiff = Math.abs(entryHour - targetHour)
-
-    if (entryDiff < bestDiff) {
-      return entry
-    }
-
-    return best
+    const bestDiff = Math.abs(getLocalHour(best.dt, timezoneOffsetSeconds) - targetHour)
+    const entryDiff = Math.abs(getLocalHour(entry.dt, timezoneOffsetSeconds) - targetHour)
+    return entryDiff < bestDiff ? entry : best
   }, null)
 }
 
@@ -85,51 +69,41 @@ function buildDailyForecast(entries, timezoneOffsetSeconds) {
   if (!Array.isArray(entries)) return []
 
   const byDate = new Map()
-
   entries.forEach((entry) => {
     const key = getLocalDateKey(entry.dt, timezoneOffsetSeconds)
     const bucket = byDate.get(key)
-    if (bucket) {
-      bucket.push(entry)
-    } else {
-      byDate.set(key, [entry])
-    }
+    if (bucket) bucket.push(entry)
+    else byDate.set(key, [entry])
   })
 
   const days = Array.from(byDate.entries())
-    .sort(([dayA], [dayB]) => (dayA < dayB ? -1 : dayA > dayB ? 1 : 0))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([dateKey, dayEntries]) => {
       let minTemp = Number.POSITIVE_INFINITY
       let maxTemp = Number.NEGATIVE_INFINITY
 
-      dayEntries.forEach((entry) => {
-        const { main } = entry
+      dayEntries.forEach(({ main }) => {
         if (!main) return
-        if (typeof main.temp_min === 'number') {
-          minTemp = Math.min(minTemp, main.temp_min)
-        }
-        if (typeof main.temp_max === 'number') {
-          maxTemp = Math.max(maxTemp, main.temp_max)
-        }
+        if (typeof main.temp_min === 'number') minTemp = Math.min(minTemp, main.temp_min)
+        if (typeof main.temp_max === 'number') maxTemp = Math.max(maxTemp, main.temp_max)
       })
 
       const representative = selectRepresentativeEntry(dayEntries, timezoneOffsetSeconds) ?? dayEntries[0]
-      const representativeWeather = representative?.weather?.[0] ?? {}
+      const repWeather = representative?.weather?.[0] ?? {}
 
       return {
         dateKey,
         timestamp: representative?.dt ?? dayEntries[0]?.dt,
         minTemp: Number.isFinite(minTemp) ? minTemp : null,
         maxTemp: Number.isFinite(maxTemp) ? maxTemp : null,
-        icon: representativeWeather.icon ?? '01d',
-        description: representativeWeather.description ?? '',
+        icon: repWeather.icon ?? '01d',
+        description: repWeather.description ?? '',
       }
     })
 
   const todayKey = getLocalDateKey(Math.floor(Date.now() / 1000), timezoneOffsetSeconds)
-  const filteredDays = days.filter((day) => day.dateKey >= todayKey)
-
-  return filteredDays.slice(0, 5)
+  const filtered = days.filter((d) => d.dateKey >= todayKey)
+  return filtered.slice(0, 5)
 }
 
 function normalizeCurrentWeather(payload) {
@@ -175,7 +149,6 @@ export async function getWeatherData({ type, value, units = 'metric', signal } =
   }
 
   const params = { units }
-
   if (type === 'city') {
     params.q = value
   } else if (type === 'coords' && typeof value === 'object') {

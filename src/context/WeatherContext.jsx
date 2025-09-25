@@ -37,12 +37,9 @@ export function WeatherProvider({ children }) {
         setWeather(data)
         setStatus('success')
       } catch (fetchError) {
-        if (fetchError.name === 'AbortError') {
-          return
-        }
+        if (fetchError?.name === 'AbortError') return
 
         let normalizedError = fetchError
-
         if (fetchError?.status === 404) {
           normalizedError = new Error('No encontramos esa ciudad. Probá con otra búsqueda.')
           normalizedError.status = fetchError.status
@@ -62,7 +59,6 @@ export function WeatherProvider({ children }) {
     (city) => {
       const trimmedCity = city?.trim()
       if (!trimmedCity) return
-
       performFetch({ type: 'city', value: trimmedCity })
     },
     [performFetch],
@@ -70,10 +66,7 @@ export function WeatherProvider({ children }) {
 
   const searchByCoords = useCallback(
     (coords) => {
-      if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') {
-        return
-      }
-
+      if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') return
       performFetch({ type: 'coords', value: { lat: coords.lat, lon: coords.lon } })
     },
     [performFetch],
@@ -81,13 +74,11 @@ export function WeatherProvider({ children }) {
 
   useEffect(() => {
     if (!lastRequestRef.current) return
-
     performFetch(lastRequestRef.current, { persistRequest: false })
   }, [units, performFetch])
 
   useEffect(() => {
     searchByCity('Buenos Aires')
-
     return () => {
       abortControllerRef.current?.abort()
     }
@@ -101,7 +92,7 @@ export function WeatherProvider({ children }) {
       searchByCity,
       searchByCoords,
     }),
-    [error, searchByCity, searchByCoords, status, weather],
+    [weather, status, error, searchByCity, searchByCoords],
   )
 
   return <WeatherContext.Provider value={value}>{children}</WeatherContext.Provider>
@@ -110,10 +101,8 @@ export function WeatherProvider({ children }) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useWeather() {
   const context = useContext(WeatherContext)
-
   if (!context) {
     throw new Error('useWeather must be used within a WeatherProvider')
   }
-
   return context
 }

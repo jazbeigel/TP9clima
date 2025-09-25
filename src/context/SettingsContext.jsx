@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 const SettingsContext = createContext(null)
-
 const STORAGE_KEY = 'weather-app-settings'
 
 function getInitialSettings() {
@@ -25,7 +24,6 @@ function getInitialSettings() {
   }
 
   const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches
-
   return {
     theme: prefersDark ? 'dark' : 'light',
     units: 'metric',
@@ -37,13 +35,11 @@ export function SettingsProvider({ children }) {
 
   useEffect(() => {
     if (typeof document === 'undefined') return
-
     document.documentElement.dataset.theme = settings.theme
   }, [settings.theme])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
     } catch (error) {
@@ -85,10 +81,8 @@ export function SettingsProvider({ children }) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useSettings() {
   const context = useContext(SettingsContext)
-
   if (!context) {
     throw new Error('useSettings must be used within a SettingsProvider')
   }
-
   return context
 }
