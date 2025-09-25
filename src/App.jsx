@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import SearchForm from './components/SearchForm.jsx'
 import LocationButton from './components/LocationButton.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
@@ -8,7 +8,7 @@ import ForecastList from './components/ForecastList.jsx'
 import WeatherHighlights from './components/WeatherHighlights.jsx'
 import Loader from './components/Loader.jsx'
 import { useWeather } from './context/WeatherContext.jsx'
-import { capitalize } from './utils/formatters.js'
+import { DEFAULT_LOCALE } from './utils/formatters.js'
 import './App.css'
 
 function App() {
@@ -49,39 +49,41 @@ function App() {
     )
   }
 
-  const lastUpdateLabel = weather
-    ? new Date(weather.updatedAt).toLocaleTimeString('es-AR', {
+  const lastUpdateLabel = useMemo(() => {
+    if (!weather?.updatedAt) return null
+    try {
+      return new Date(weather.updatedAt).toLocaleTimeString(DEFAULT_LOCALE, {
         hour: '2-digit',
         minute: '2-digit',
       })
-    : null
+    } catch {
+      return null
+    }
+  }, [weather?.updatedAt])
 
   return (
-    <div className="app-layout">
-      <aside className="sidebar">
-        <header className="sidebar__header">
-          <h1 className="app-title">Pronóstico</h1>
-          <ThemeToggle />
-        </header>
-        <SearchForm onSearch={handleSearch} isLoading={isLoading} />
-        <LocationButton onClick={handleUseLocation} isLoading={isLocating || isLoading} />
-        {locationError ? <p className="hint hint--error">{locationError}</p> : null}
-        {error ? <p className="hint hint--error">{capitalize(error.message)}</p> : null}
-        {isLoading && !weather ? <Loader /> : <WeatherSummary weather={weather} />}
-      </aside>
-      <main className="main-content">
-        <div className="main-content__toolbar">
+    <div className="app">
+      <header className="app__header">
+        <SearchForm onSearch={handleSearch} />
+        <div className="app__actions">
+          <LocationButton onClick={handleUseLocation} loading={isLocating} />
           <UnitsToggle />
-          {lastUpdateLabel ? <p className="last-update">Actualizado {lastUpdateLabel}</p> : null}
+          <ThemeToggle />
         </div>
-        {isLoading && weather ? (
-          <div className="loading-overlay">
-            <Loader />
-          </div>
-        ) : null}
-        <ForecastList weather={weather} />
-        <WeatherHighlights weather={weather} />
-      </main>
+      </header>
+
+      {isLoading && <Loader />}
+
+      {error && <p className="app__error">{error.message || 'Ocurrió un error'}</p>}
+      {locationError && <p className="app__error">{locationError}</p>}
+
+      {weather && !isLoading && (
+        <>
+          <WeatherSummary weather={weather} lastUpdateLabel={lastUpdateLabel} />
+          <WeatherHighlights weather={weather} />
+          <ForecastList forecast={weather.forecast} timezoneOffset={weather.location.timezoneOffset} />
+        </>
+      )}
     </div>
   )
 }

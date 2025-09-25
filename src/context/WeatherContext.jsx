@@ -1,77 +1,108 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { getWeatherData } from '../services/weatherService.js'
 import { useSettings } from './SettingsContext.jsx'
 
 const WeatherContext = createContext(null)
-const DEFAULT_CITY = 'Buenos Aires'
 
 export function WeatherProvider({ children }) {
   const { units } = useSettings()
-  const [query, setQuery] = useState({ type: 'city', value: DEFAULT_CITY })
   const [weather, setWeather] = useState(null)
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
+  const lastRequestRef = useRef(null)
+  const abortControllerRef = useRef(null)
 
-  useEffect(() => {
-    if (!query) return
+  const performFetch = useCallback(
+    async (request, options = {}) => {
+      if (!request) return
 
-    let isCurrent = true
-    setStatus('loading')
-    setError(null)
+      abortControllerRef.current?.abort()
+      const controller = new AbortController()
+      abortControllerRef.current = controller
 
-    getWeatherData({ ...query, units })
-      .then((data) => {
-        if (!isCurrent) return
+      setStatus('loading')
+      setError(null)
+
+      try {
+        const data = await getWeatherData({
+          ...request,
+          units,
+          signal: controller.signal,
+        })
+
+        if (options.persistRequest !== false) {
+          lastRequestRef.current = request
+        }
+
         setWeather(data)
         setStatus('success')
-      })
-      .catch((fetchError) => {
-        if (!isCurrent) return
+      } catch (fetchError) {
+        if (fetchError?.name === 'AbortError') return
 
-        const readableError =
-          fetchError?.status === 404
-            ? new Error('No encontramos esa ciudad. Probá con otro nombre.')
-            : fetchError?.message
-              ? fetchError
-              : new Error('No pudimos obtener el clima. Intentá nuevamente.')
+        let normalizedError = fetchError
+        if (fetchError?.status === 404) {
+          normalizedError = new Error('No encontramos esa ciudad. Probá con otra búsqueda.')
+          normalizedError.status = fetchError.status
+        } else if (!fetchError?.message) {
+          normalizedError = new Error('Ocurrió un error al obtener el clima. Intentá nuevamente más tarde.')
+          normalizedError.status = fetchError?.status
+        }
 
-        setError(readableError)
+        setError(normalizedError)
         setStatus('error')
-      })
-
-    return () => {
-      isCurrent = false
-    }
-  }, [query, units])
-
-  const searchByCity = (city) => {
-    const trimmed = city?.trim()
-    if (!trimmed) return
-    setQuery({ type: 'city', value: trimmed })
-  }
-
-  const searchByCoords = (coords) => {
-    const lat = coords?.lat
-    const lon = coords?.lon
-
-    if (typeof lat !== 'number' || typeof lon !== 'number') return
-    setQuery({ type: 'coords', value: { lat, lon } })
-  }
-
-  return (
-    <WeatherContext.Provider value={{ weather, status, error, searchByCity, searchByCoords }}>
-      {children}
-    </WeatherContext.Provider>
+      }
+    },
+    [units],
   )
+
+  const searchByCity = useCallback(
+    (city) => {
+      const trimmedCity = city?.trim()
+      if (!trimmedCity) return
+      performFetch({ type: 'city', value: trimmedCity })
+    },
+    [performFetch],
+  )
+
+  const searchByCoords = useCallback(
+    (coords) => {
+      if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') return
+      performFetch({ type: 'coords', value: { lat: coords.lat, lon: coords.lon } })
+    },
+    [performFetch],
+  )
+
+  useEffect(() => {
+    if (!lastRequestRef.current) return
+    performFetch(lastRequestRef.current, { persistRequest: false })
+  }, [units, performFetch])
+
+  useEffect(() => {
+    searchByCity('Buenos Aires')
+    return () => {
+      abortControllerRef.current?.abort()
+    }
+  }, [searchByCity])
+
+  const value = useMemo(
+    () => ({
+      weather,
+      status,
+      error,
+      searchByCity,
+      searchByCoords,
+    }),
+    [weather, status, error, searchByCity, searchByCoords],
+  )
+
+  return <WeatherContext.Provider value={value}>{children}</WeatherContext.Provider>
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function useWeather() {
   const context = useContext(WeatherContext)
-
   if (!context) {
-    throw new Error('useWeather debe usarse dentro de un WeatherProvider')
+    throw new Error('useWeather must be used within a WeatherProvider')
   }
-
   return context
 }
